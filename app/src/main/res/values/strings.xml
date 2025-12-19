@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">Library</string>
+    <string name="table_of_contents">Оглавление</string>
+    <string name="bookmarks">Закладки</string>
+    <string name="add_bookmark">Добавить закладку</string>
+    <string name="settings">Настройки</string>
+    <string name="previous_page">Предыдущая страница</string>
+    <string name="next_page">Следующая страница</string>
+    <string name="book_cover">Обложка книги</string>
+    <string name="no_bookmarks">Нет закладок</string>
+    <string name="bookmark">Закладка</string>
+    <string name="edit_bookmark">Редактировать закладку</string>
+    <string name="bookmark_name">Название закладки</string>
+    <string name="bookmark_notes">Заметки</string>
+    <string name="save">Сохранить</string>
+    <string name="delete">Удалить</string>
+    <string name="loading_book">Загрузка книги...</string>
+    <string name="error_loading_book">Ошибка загрузки книги</string>
+</resources>
