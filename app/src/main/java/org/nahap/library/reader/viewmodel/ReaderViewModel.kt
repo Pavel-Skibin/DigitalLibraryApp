@@ -7,20 +7,26 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import org.nahap.library.reader.api.BookApi
-import org.nahap.library.reader.api.BookmarkApi
-import org.nahap.library.reader.model.BookmarkCreateRequest
-import org.nahap.library.reader.model.BookmarkUpdateRequest
+import org.nahap.library.reader.domain.usecase.CreateBookmarkUseCase
+import org.nahap.library.reader.domain.usecase.DeleteBookmarkUseCase
+import org.nahap.library.reader.domain.usecase.GetBookmarksUseCase
+import org.nahap.library.reader.domain.usecase.LoadBookUseCase
+import org.nahap.library.reader.domain.usecase.UpdateBookmarkUseCase
 import org.nahap.library.reader.model.ReaderState
 import org.nahap.library.reader.model.ReadingSettings
-import org.nahap.library.reader.parser.FB2Parser
+import org.nahap.library.reader.presentation.mapper.ReaderPresentationMapper
 import javax.inject.Inject
 
+/**
+ * ViewModel для экрана чтения книги
+ */
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
-    private val bookApi: BookApi,
-    private val bookmarkApi: BookmarkApi,
-    private val fb2Parser: FB2Parser
+    private val loadBookUseCase: LoadBookUseCase,
+    private val getBookmarksUseCase: GetBookmarksUseCase,
+    private val createBookmarkUseCase: CreateBookmarkUseCase,
+    private val updateBookmarkUseCase: UpdateBookmarkUseCase,
+    private val deleteBookmarkUseCase: DeleteBookmarkUseCase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ReaderState(bookId = -1))
@@ -32,25 +38,26 @@ class ReaderViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, error = null, bookId = bookId)
 
             try {
-
-                val fb2Content = bookApi.getBookFb2(bookId)
-
-
-                val parsed = fb2Parser.parse(fb2Content)
-
-
-                val bookmarks = try {
-                    bookmarkApi.getBookmarks(bookId).content
-                } catch (e: Exception) {
-                    emptyList()
+                val bookResult = loadBookUseCase(bookId)
+                
+                if (bookResult.isFailure) {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        error = "Ошибка загрузки: ${bookResult.exceptionOrNull()?.message}"
+                    )
+                    return@launch
                 }
+                
+                val book = bookResult.getOrNull()!!
+                val bookmarksResult = getBookmarksUseCase(bookId)
+                val bookmarks = bookmarksResult.getOrNull() ?: emptyList()
 
                 _state.value = _state.value.copy(
-                    title = parsed.title,
-                    author = parsed.author,
-                    htmlContent = parsed.htmlContent,
-                    toc = parsed.toc,
-                    bookmarks = bookmarks,
+                    title = book.title,
+                    author = book.author,
+                    htmlContent = book.htmlContent,
+                    toc = book.toc.map { ReaderPresentationMapper.tocItemToUi(it) },
+                    bookmarks = bookmarks.map { ReaderPresentationMapper.bookmarkToUi(it) },
                     isLoading = false
                 )
 
@@ -67,18 +74,17 @@ class ReaderViewModel @Inject constructor(
     fun createBookmark(position: Double, name: String, notes: String = "") {
         viewModelScope.launch {
             try {
-                val request = BookmarkCreateRequest(
+                val result = createBookmarkUseCase(
                     bookId = _state.value.bookId,
                     position = position,
                     name = name,
                     notes = notes
                 )
 
-                val created = bookmarkApi.createBookmark(request)
-
-
-                val updated = _state.value.bookmarks + created
-                _state.value = _state.value.copy(bookmarks = updated.sortedBy { it.position })
+                result.onSuccess { createdBookmark ->
+                    val updated = _state.value.bookmarks + ReaderPresentationMapper.bookmarkToUi(createdBookmark)
+                    _state.value = _state.value.copy(bookmarks = updated.sortedBy { it.position })
+                }
 
             } catch (e: Exception) {
 
@@ -90,14 +96,20 @@ class ReaderViewModel @Inject constructor(
     fun updateBookmark(bookmarkId: Int, position: Double, name: String, notes: String) {
         viewModelScope.launch {
             try {
-                val request = BookmarkUpdateRequest(position, name, notes)
-                val updated = bookmarkApi.updateBookmark(bookmarkId, request)
+                val result = updateBookmarkUseCase(
+                    bookmarkId = bookmarkId,
+                    position = position,
+                    name = name,
+                    notes = notes
+                )
 
-                val list = _state.value.bookmarks.toMutableList()
-                val index = list.indexOfFirst { it.id == bookmarkId }
-                if (index != -1) {
-                    list[index] = updated
-                    _state.value = _state.value.copy(bookmarks = list.sortedBy { it.position })
+                result.onSuccess { updatedBookmark ->
+                    val list = _state.value.bookmarks.toMutableList()
+                    val index = list.indexOfFirst { it.id == bookmarkId }
+                    if (index != -1) {
+                        list[index] = ReaderPresentationMapper.bookmarkToUi(updatedBookmark)
+                        _state.value = _state.value.copy(bookmarks = list.sortedBy { it.position })
+                    }
                 }
 
             } catch (e: Exception) {
@@ -110,10 +122,12 @@ class ReaderViewModel @Inject constructor(
     fun deleteBookmark(bookmarkId: Int) {
         viewModelScope.launch {
             try {
-                bookmarkApi.deleteBookmark(bookmarkId)
+                val result = deleteBookmarkUseCase(bookmarkId)
 
-                val updated = _state.value.bookmarks.filterNot { it.id == bookmarkId }
-                _state.value = _state.value.copy(bookmarks = updated)
+                result.onSuccess {
+                    val updated = _state.value.bookmarks.filterNot { it.id == bookmarkId }
+                    _state.value = _state.value.copy(bookmarks = updated)
+                }
 
             } catch (e: Exception) {
 
@@ -152,6 +166,7 @@ class ReaderViewModel @Inject constructor(
         )
     }
 
+
     fun setLineHeight(lineHeight: Float) {
         val current = _state.value.readingSettings
         _state.value = _state.value.copy(
@@ -164,14 +179,6 @@ class ReaderViewModel @Inject constructor(
         val current = _state.value.readingSettings
         _state.value = _state.value.copy(
             readingSettings = current.copy(wordSpacing = wordSpacing.coerceIn(0f, 0.5f))
-        )
-    }
-
-
-    fun setMaxInlineSize(maxInlineSize: Int) {
-        val current = _state.value.readingSettings
-        _state.value = _state.value.copy(
-            readingSettings = current.copy(maxInlineSize = maxInlineSize.coerceIn(600, 1400))
         )
     }
 

@@ -43,12 +43,11 @@ class ReadingSettingsDialog(
         binding.tvFontSize.text = "${currentSettings.fontSize.toInt()}px"
         binding.tvLineHeight.text = String.format("%.1f", currentSettings.lineHeight)
         binding.tvWordSpacing.text = String.format("%.2fem", currentSettings.wordSpacing)
-        binding.tvMargin.text = "${currentSettings.maxInlineSize}px"
 
     }
 
     private fun applyAndNotify() {
-        Log.d(TAG, "📤 Sending settings: fontSize=${currentSettings.fontSize}")
+        Log.d(TAG, " Sending settings: fontSize=${currentSettings.fontSize}")
         onSettingsChanged(currentSettings)
     }
 
@@ -106,21 +105,7 @@ class ReadingSettingsDialog(
         binding.btnDecreaseWordSpacing.setOnClickListener {
             val newSpacing = (currentSettings.wordSpacing - 0.05f).coerceAtLeast(0f)
             currentSettings = currentSettings.copy(wordSpacing = newSpacing)
-            binding.tvWordSpacing.text = String.format("%. 2fem", newSpacing)
-            applyAndNotify()
-        }
-
-        binding.btnIncreaseMargin.setOnClickListener {
-            val newMargin = (currentSettings.maxInlineSize + 50).coerceAtMost(1400)
-            currentSettings = currentSettings.copy(maxInlineSize = newMargin)
-            binding.tvMargin.text = "${newMargin}px"
-            applyAndNotify()
-        }
-
-        binding.btnDecreaseMargin.setOnClickListener {
-            val newMargin = (currentSettings.maxInlineSize - 50).coerceAtLeast(600)
-            currentSettings = currentSettings.copy(maxInlineSize = newMargin)
-            binding.tvMargin.text = "${newMargin}px"
+            binding.tvWordSpacing.text = String.format("%.2fem", newSpacing)
             applyAndNotify()
         }
 

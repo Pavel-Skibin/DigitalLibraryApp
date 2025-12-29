@@ -1,19 +1,23 @@
 package org.nahap.library.catalog.viewmodel
 
 import android.util.Log
-import androidx. lifecycle.ViewModel
-import androidx. lifecycle.viewModelScope
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow. MutableStateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines. launch
-import org.nahap. library.catalog.model.AuthorResponse
+import kotlinx.coroutines.launch
+import org.nahap.library.catalog.domain.repository.CatalogRepository
+import org.nahap.library.catalog.domain.usecase.GetAllAuthorsUseCase
+import org.nahap.library.catalog.domain.usecase.GetAllGenresUseCase
+import org.nahap.library.catalog.domain.usecase.SearchBooksUseCase
+import org.nahap.library.catalog.model.AuthorResponse
 import org.nahap.library.catalog.model.BookResponse
-import org.nahap. library.catalog.model.GenreResponse
-import org.nahap. library.catalog.model.SearchFilters
-import org.nahap. library.catalog.model.SortOption
-import org. nahap.library.catalog.repository.LibraryRepository
+import org.nahap.library.catalog.model.GenreResponse
+import org.nahap.library.catalog.model.SearchFilters
+import org.nahap.library.catalog.model.SortOption
+import org.nahap.library.catalog.presentation.mapper.CatalogPresentationMapper
 import javax.inject.Inject
 
 data class SearchState(
@@ -29,9 +33,15 @@ data class SearchState(
     val hasMoreResults: Boolean = false
 )
 
+/**
+ * ViewModel для экрана поиска
+ */
 @HiltViewModel
 class SearchViewModel @Inject constructor(
-    private val repository: LibraryRepository
+    private val searchBooksUseCase: SearchBooksUseCase,
+    private val getAllAuthorsUseCase: GetAllAuthorsUseCase,
+    private val getAllGenresUseCase: GetAllGenresUseCase,
+    private val catalogRepository: CatalogRepository
 ) : ViewModel() {
 
     companion object {
@@ -45,17 +55,18 @@ class SearchViewModel @Inject constructor(
         loadMetadata()
     }
 
+
     private fun loadMetadata() {
         viewModelScope.launch {
             _state.value = _state.value.copy(isLoadingMetadata = true)
 
             try {
-                val authorsResult = repository.getAllAuthors()
-                val genresResult = repository.getAllGenres()
+                val authorsResult = getAllAuthorsUseCase()
+                val genresResult = getAllGenresUseCase()
 
                 _state.value = _state.value.copy(
-                    authors = authorsResult.getOrNull() ?: emptyList(),
-                    genres = genresResult.getOrNull() ?: emptyList(),
+                    authors = authorsResult.getOrNull()?.map { CatalogPresentationMapper.authorToUi(it) } ?: emptyList(),
+                    genres = genresResult.getOrNull()?.map { CatalogPresentationMapper.genreToUi(it) } ?: emptyList(),
                     isLoadingMetadata = false
                 )
             } catch (e: Exception) {
@@ -73,20 +84,20 @@ class SearchViewModel @Inject constructor(
     }
 
     fun updateTitle(title: String) {
-        _state.value = _state.value. copy(
-            filters = _state.value. filters.copy(title = title)
+        _state.value = _state.value.copy(
+            filters = _state.value.filters.copy(title = title)
         )
     }
 
     fun toggleAuthor(authorId: Int) {
-        val currentAuthors = _state.value.filters.selectedAuthors. toMutableList()
+        val currentAuthors = _state.value.filters.selectedAuthors.toMutableList()
         if (currentAuthors.contains(authorId)) {
             currentAuthors.remove(authorId)
         } else {
             currentAuthors.add(authorId)
         }
         _state.value = _state.value.copy(
-            filters = _state.value. filters.copy(selectedAuthors = currentAuthors)
+            filters = _state.value.filters.copy(selectedAuthors = currentAuthors)
         )
     }
 
@@ -97,14 +108,14 @@ class SearchViewModel @Inject constructor(
         } else {
             currentGenres.add(genreId)
         }
-        _state.value = _state. value.copy(
+        _state.value = _state.value.copy(
             filters = _state.value.filters.copy(selectedGenres = currentGenres)
         )
     }
 
     fun updateRatingRange(minRating: Double?, maxRating: Double?) {
         _state.value = _state.value.copy(
-            filters = _state.value.filters. copy(
+            filters = _state.value.filters.copy(
                 minRating = minRating,
                 maxRating = maxRating
             )
@@ -112,7 +123,7 @@ class SearchViewModel @Inject constructor(
     }
 
     fun updateSortOption(sortOption: SortOption) {
-        _state.value = _state. value.copy(
+        _state.value = _state.value.copy(
             filters = _state.value.filters.copy(sortBy = sortOption)
         )
     }
@@ -122,23 +133,26 @@ class SearchViewModel @Inject constructor(
             _state.value = _state.value.copy(isLoading = true, error = null)
 
             val page = if (loadMore) _state.value.currentPage + 1 else 0
+            val domainFilter = CatalogPresentationMapper.searchFiltersToDomain(_state.value.filters)
 
-            repository.searchBooksWithFilters(_state.value.filters, page = page)
-                .onSuccess { response ->
+            searchBooksUseCase(domainFilter, page)
+                .onSuccess { page ->
+                    val uiBooks = page.content.map { CatalogPresentationMapper.catalogBookToUi(it) }
+                    
                     val updatedResults = if (loadMore) {
-                        _state.value.searchResults + response.content
+                        _state.value.searchResults + uiBooks
                     } else {
-                        response.content
+                        uiBooks
                     }
 
-                    _state.value = _state.value. copy(
+                    _state.value = _state.value.copy(
                         searchResults = updatedResults,
                         isLoading = false,
                         hasSearched = true,
-                        currentPage = page,
-                        hasMoreResults = ! response.last
+                        currentPage = page.number,
+                        hasMoreResults = page.hasMore
                     )
-                    Log.d(TAG, "Found ${response.content.size} books (page $page, total ${updatedResults.size})")
+                    Log.d(TAG, "Found ${uiBooks.size} books (page ${page.number}, total ${updatedResults.size})")
                 }
                 .onFailure { e ->
                     _state.value = _state.value.copy(
@@ -152,7 +166,7 @@ class SearchViewModel @Inject constructor(
     }
 
     fun loadMoreResults() {
-        if (! _state.value.isLoading && _state.value.hasMoreResults) {
+        if (!_state.value.isLoading && _state.value.hasMoreResults) {
             performSearch(loadMore = true)
         }
     }
@@ -165,6 +179,6 @@ class SearchViewModel @Inject constructor(
     }
 
     fun getBookCoverUrl(bookId: Int): String {
-        return repository.getBookCoverUrl(bookId)
+        return catalogRepository.getBookCoverUrl(bookId)
     }
 }

@@ -81,80 +81,121 @@ class ReaderWebView @JvmOverloads constructor(
 
 
     fun applySettings(settings: ReadingSettings) {
-        Log. d(TAG, " APPLY: fontSize=${settings.fontSize}, line=${settings.lineHeight}")
+        Log.d(TAG, "APPLY:  fontSize=${settings.fontSize}, line=${settings.lineHeight}, wordSpacing=${settings.wordSpacing}, maxWidth=${settings.maxInlineSize}")
 
         currentSettings = settings
+
         isPaginated = settings.flow == ReadingSettings.ReadingFlow.PAGINATED
 
         if (! isPageLoaded) {
-            Log. w(TAG, "⚠ Page not loaded, skipping")
+            Log.w(TAG, "Page not loaded, skipping")
             return
         }
 
-        val fontSize = settings. fontSize.toInt()
-        val lineHeight = settings.lineHeight
+        val fontSize = settings.fontSize.toInt()
+
+        val lineHeight = settings. lineHeight
+
+        val wordSpacing = settings.wordSpacing
+
         val bgColor = if (settings. theme == ReadingSettings.ReadingTheme.DARK) "#1A1A1A" else "#FFFFFF"
-        val textColor = if (settings.theme == ReadingSettings.ReadingTheme.DARK) "#E0E0E0" else "#000000"
-        val maxWidth = settings.maxInlineSize
+
+        val textColor = if (settings.theme == ReadingSettings.ReadingTheme. DARK) "#E0E0E0" else "#000000"
+
+        val maxWidth = settings. maxInlineSize
 
         val jsCode = """
-            (function() {
-              
-                var scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-                var docHeight = document.documentElement. scrollHeight - window. innerHeight;
-                var scrollFraction = docHeight > 0 ? scrollTop / docHeight : 0;
-                console.log(' Save position: ' + (scrollFraction * 100).toFixed(1) + '%');
-                
-             
-                var old = document.getElementById('dynamic-style');
-                if (old) old. remove();
-                
-               
-                var style = document.createElement('style');
-                style.id = 'dynamic-style';
-                style.innerHTML = 
-                    '*, p, div, span, li, blockquote { ' +
-                        'font-size: ${fontSize}px ! important; ' +
-                        'line-height: ${lineHeight} !important; ' +
-                    '}' +
-                    'html, body { ' +
-                        'background-color: ${bgColor} !important; ' +
-                        'color: ${textColor} !important; ' +
-                    '}' +
-                    'body { ' +
-                        'max-width: ${maxWidth}px !important; ' +
-                        'margin: 0 auto !important; ' +
-                        'padding: 16px !important; ' +
-                    '}' +
-                    '. title { ' +
-                        'font-size: ${(fontSize * 1.5).toInt()}px !important; ' +
-                        'font-weight: 800 !important; ' +
-                    '}' +
-                    'h1 { font-size: ${(fontSize * 1.6).toInt()}px !important; font-weight: 700 !important; }' +
-                    'h2 { font-size: ${(fontSize * 1.4).toInt()}px !important; font-weight: 700 !important; }' +
-                    'h3 { font-size: ${(fontSize * 1.2).toInt()}px !important; font-weight: 700 !important; }';
-                
-                document.head.appendChild(style);
-                
-               
+        (function() {
+            var scrollTop = window.pageYOffset || document. documentElement.scrollTop;
+            var docHeight = document.documentElement. scrollHeight - window.innerHeight;
+            var scrollFraction = docHeight > 0 ? scrollTop / docHeight : 0;
+            console.log('Save position: ' + (scrollFraction * 100).toFixed(1) + '%');
+            
+            var old = document.getElementById('dynamic-style');
+            if (old) old.remove();
+            
+            var style = document.createElement('style');
+            style.id = 'dynamic-style';
+            style. innerHTML = 
+                '* { ' +
+                    'box-sizing: border-box !important; ' +
+                '}' +
+                'html { ' +
+                    'margin: 0 !important; ' +
+                    'padding: 0 !important; ' +
+                    'width: 100% !important; ' +
+                    'display: block !important; ' +
+                '}' +
+                'html, body { ' +
+                    'background-color: ${bgColor} !important; ' +
+                    'color:  ${textColor} !important; ' +
+                '}' +
+                'body { ' +
+                    'display: block !important; ' +
+                    'margin-left: auto !important; ' +
+                    'margin-right: auto !important; ' +
+                    'margin-top: 0 !important; ' +
+                    'margin-bottom: 0 !important; ' +
+                    'padding: 16px !important; ' +
+                    'max-width: ${maxWidth}px !important; ' +
+                    'min-width: 0 !important; ' +
+                    'width: auto !important; ' +
+                '}' +
+                'body > * { ' +
+                    'max-width: 100% !important; ' +
+                '}' +
+                'p, div, span, li, blockquote, dd, dt { ' +
+                    'font-size: ${fontSize}px !important; ' +
+                    'line-height: ${lineHeight} !important; ' +
+                    'word-spacing: ${wordSpacing}em !important; ' +
+                '}' +
+                'div { ' +
+                    'max-width: 100% !important; ' +
+                '}' +
+                'section, .section, article { ' +
+                    'max-width: 100% !important; ' +
+                    'margin-left: 0 !important; ' +
+                    'margin-right: 0 !important; ' +
+                '}' +
+                '.title { ' +
+                    'font-size: ${(fontSize * 1.5).toInt()}px !important; ' +
+                    'font-weight: 800 !important; ' +
+                    'word-spacing: ${wordSpacing}em !important; ' +
+                '}' +
+                'h1 { font-size: ${(fontSize * 1.6).toInt()}px !important; font-weight: 700 !important; word-spacing: ${wordSpacing}em !important; }' +
+                'h2 { font-size:  ${(fontSize * 1.4).toInt()}px !important; font-weight: 700 !important; word-spacing: ${wordSpacing}em !important; }' +
+                'h3 { font-size: ${(fontSize * 1.2).toInt()}px !important; font-weight: 700 !important; word-spacing: ${wordSpacing}em !important; }';
+            
+            document.head.appendChild(style);
+            
+            var bodyEl = document.body;
+            if (bodyEl) {
+                bodyEl.style.setProperty('margin-left', 'auto', 'important');
+                bodyEl.style.setProperty('margin-right', 'auto', 'important');
+                bodyEl.style.setProperty('max-width', ${maxWidth} + 'px', 'important');
+                bodyEl.style.setProperty('width', 'auto', 'important');
+            }
+            
+            console.log('Applied: wordSpacing=${wordSpacing}em, maxWidth=${maxWidth}px');
+            
+            requestAnimationFrame(function() {
                 requestAnimationFrame(function() {
-                    requestAnimationFrame(function() {
-                        var newDocHeight = document.documentElement.scrollHeight - window.innerHeight;
-                        var newScrollTop = Math.round(scrollFraction * newDocHeight);
-                        window.scrollTo(0, newScrollTop);
-                        console.log(' Restored to: ' + (scrollFraction * 100).toFixed(1) + '%');
-                        
-                        setTimeout(function() {
-                            if (typeof window.updatePosition === 'function') {
-                                window.updatePosition();
-                            }
-                        }, 50);
-                    });
+                    var newDocHeight = document.documentElement.scrollHeight - window.innerHeight;
+                    var newScrollTop = Math.round(scrollFraction * newDocHeight);
+                    window. scrollTo(0, newScrollTop);
+                    console.log('Restored to: ' + (scrollFraction * 100).toFixed(1) + '%');
+                    
+                    setTimeout(function() {
+                        if (typeof window.updatePosition === 'function') {
+                            window.updatePosition();
+                        }
+                    }, 50);
                 });
-                
-                return 'OK';
-            })();
-        """. trimIndent()
+            });
+            
+            return 'OK';
+        })();
+    """.trimIndent()
 
         evaluateJavascript(jsCode) { result ->
             Log.d(TAG, "Result: $result")
